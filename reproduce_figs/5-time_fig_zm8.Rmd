@@ -1,0 +1,139 @@
+---
+title: "7_time_fig_zm8"
+author: "Lauren Hsu"
+date: "7/29/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(SingleCellExperiment)
+library(corral)
+source('figures/load_pkgs.R')
+source('figures/utils.R')
+source('figures/plotting_utils.R')
+```
+
+
+Setting the directory for where plots will be saved
+```{r, message = F}
+# plot_dir is the directory where all the plots are saved
+# save_dir is where to read the data from
+
+plot_dir <- 'figures/7_time_fig_zm8/'
+
+checkdir(plot_dir)
+```
+
+
+## zm8 fig
+
+```{r}
+zm8 <- DuoClustering2018::sce_full_Zhengmix8eq()
+```
+
+
+```{r}
+nfeats <- c(1500, 3000, 4000, 5000, 7500, 10000)
+mths_keep <- c('std','ftalt_p','varstab','anscombe_std','ft_x_std','deflate')
+
+zm8_list <- lapply(as.list(nfeats), FUN = scran_feat_selection, sce = zm8, mth = 'not', fdr_thresh = 1)
+
+
+res <- list()
+for(i in 1:length(nfeats)){
+  mat <- counts(zm8_list[[i]])
+  f_ind <- paste0(nfeats[i], 'feats')
+  res[[f_ind]] <- list()
+  for(mth in mths_keep){
+    runtime <- system.time({
+      ppmat <- test_corral_preproc(inp = mat, rtype = mth)
+      cur_res <- compsvd_mod(ppmat, ncomp = 50)
+    })
+    cur_res$runtime <- runtime
+    res[[f_ind]][[mth]] <- cur_res
+  }
+}
+
+saveRDS(res, file = '7_time_fig_zm8.rds')
+
+time_df <- data.frame()
+for(iname in names(res)){
+  time_df <- rbind(time_df, 
+                   data.frame(n_feats = rep(iname, length(mths_keep)),
+                              mth = names(res[[iname]]),
+                              Reduce(rbind,lapply(res[[iname]], FUN = function(dl) dl$runtime))))
+}
+
+time_df$runtime_min <- time_df$user.self/60
+time_df$num_feats <- as.numeric(str_split_fixed(time_df$n_feats, 'feats', 2)[,1])
+
+time_gg <- ggplot(time_df, aes(x = num_feats, y = runtime_min, color = mth)) + 
+  geom_line() + 
+  geom_point() + theme_classic() + scale_color_manual(values = mthcolors[mths_keep],
+                                                      labels = mthnames[mths_keep]) + 
+  labs(color = 'Method') + ggtitle('Runtime comparison by number of features, across methods', subtitle = 'Zhengmix8: 3994 cells')
+
+time_gg
+
+savegg2pdf(time_gg, 'time_comp_zm8', wdim = 7, hdim = 5)
+
+```
+
+
+## xenopus version
+
+```{r}
+xeno.sce <- scRNAseq::AztekinTailData()
+```
+
+```{r}
+nfeats <- c(1500, 3000, 5000, 7500, 10000, 15000, 20000)
+mths_keep <- c('std','ftalt_p','varstab','anscombe_std','ft_x_std','deflate')
+
+xeno.sce <- logNormCounts(xeno.sce)
+
+xeno_list <- lapply(as.list(nfeats), FUN = scran_feat_selection, sce = xeno.sce, mth = 'not', fdr_thresh = 1)
+
+
+res <- list()
+for(i in 1:length(nfeats)){
+  mat <- counts(xeno_list[[i]])
+  f_ind <- paste0(nfeats[i], 'feats')
+  res[[f_ind]] <- list()
+  for(mth in mths_keep){
+    runtime <- system.time({
+      ppmat <- test_corral_preproc(inp = mat, rtype = mth)
+      cur_res <- compsvd_mod(ppmat, ncomp = 50)
+    })
+    cur_res$runtime <- runtime
+    res[[f_ind]][[mth]] <- cur_res
+  }
+}
+
+saveRDS(res, file = '7_time_fig_xeno.rds')
+
+time_df <- data.frame()
+for(iname in names(res)){
+  time_df <- rbind(time_df, 
+                   data.frame(n_feats = rep(iname, length(mths_keep)),
+                              mth = names(res[[iname]]),
+                              Reduce(rbind,lapply(res[[iname]], FUN = function(dl) dl$runtime))))
+}
+
+time_df$runtime_min <- time_df$user.self/60
+time_df$num_feats <- as.numeric(str_split_fixed(time_df$n_feats, 'feats', 2)[,1])
+
+time_gg <- ggplot(time_df, aes(x = num_feats, y = runtime_min, color = mth)) + 
+  geom_line() + 
+  geom_point() + theme_classic() + scale_color_manual(values = mthcolors[mths_keep],
+                                                      labels = mthnames[mths_keep]) + 
+  labs(color = 'Method') + ggtitle('Runtime comparison by number of features, across methods', subtitle = 'Aztekin xenopus tail: 13,199 cells')
+
+time_gg
+
+savegg2pdf(time_gg, 'time_comp_xeno', wdim = 7, hdim = 5)
+```
+
+

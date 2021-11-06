@@ -1,0 +1,510 @@
+---
+title: "Final Figures for corral paper"
+author: "Lauren Hsu"
+date: "5/19/2021"
+output: 
+  html_document:
+    toc: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+try(source('../R/load_pkgs.R'))
+try(source('../R/utils.R'))
+```
+
+### Imports and data setup
+```{r, scmix_setup, eval = F}
+scmix_dat <- load_all_data()[1:3]
+scmix_genes.use <- Reduce(intersect,lapply(scmix_dat,rownames))
+scmix_dat <- lapply(scmix_dat,'[',scmix_genes.use)
+for (i in 1:3){
+  names(colData(scmix_dat[[i]]))[which(names(colData(scmix_dat[[i]])) == 'cell_line')] <- 'phenoid'
+}
+```
+
+#### SeuratData download
+
+```{r seuratdata_download, eval = FALSE}
+SeuratData::InstallData('pbmcsca')
+```
+
+
+#### Seurat (5k feats)
+
+Creating Seurat object (as.SingleCellExperiment)
+
+```{r, eval = F}
+dat_name <- 'pbmcsca'
+seurat_obj <- eval(as.name(dat_name))
+
+fullsce <- as.SingleCellExperiment(seurat_obj)
+fullsce$tech <- fullsce$Method
+fullsce$celltype <- fullsce$CellType
+
+mths <- unique(fullsce$tech)
+
+dat.list <- SplitObject(seurat_obj, split.by = "Method")
+dat.list <- dat.list[mths]
+for (i in 1:length(dat.list)) {
+    dat.list[[i]] <- NormalizeData(dat.list[[i]], verbose = FALSE)
+    dat.list[[i]] <- FindVariableFeatures(dat.list[[i]], selection.method = "vst", 
+        nfeatures = 5000, verbose = FALSE)
+}
+
+seurat_sce <- fullsce[,which(fullsce$tech %in% mths)]
+names(colData(seurat_sce))[which(names(colData(seurat_sce)) == 'celltype')] <- 'phenoid'
+
+mths_keep <- c('Drop-seq', 'inDrops','10x Chromium (v3)')
+
+seurat_list <- list()
+
+for (mth in mths_keep){
+  dat <- seurat_sce[, which(seurat_sce$tech == mth)]
+  genevarmod <- modelGeneVar(dat)
+  hvg_inds <- getTopHVGs(genevarmod)
+  seurat_list[[mth]] <- dat[hvg_inds,]
+}
+```
+
+```{r}
+lapply(seurat_list, dim)
+lapply(seurat_list, function(x) c('CD4','CD8A', 'CD14','FCGR3A') %in% rownames(x))
+```
+
+
+#### Seurat (10k feats)
+
+```{r, eval = F}
+dat_name <- 'pbmcsca'
+seurat_obj <- eval(as.name(dat_name))
+
+fullsce <- as.SingleCellExperiment(seurat_obj)
+fullsce$tech <- fullsce$Method
+fullsce$celltype <- fullsce$CellType
+
+mths <- unique(fullsce$tech)
+
+dat.list <- SplitObject(seurat_obj, split.by = "Method")
+dat.list <- dat.list[mths]
+for (i in 1:length(dat.list)) {
+    dat.list[[i]] <- NormalizeData(dat.list[[i]], verbose = FALSE)
+    dat.list[[i]] <- FindVariableFeatures(dat.list[[i]], selection.method = "vst", 
+        nfeatures = 10000, verbose = FALSE)
+}
+
+seurat_sce <- fullsce[,which(fullsce$tech %in% mths)]
+names(colData(seurat_sce))[which(names(colData(seurat_sce)) == 'celltype')] <- 'phenoid'
+
+mths_keep <- c('Drop-seq', 'inDrops','10x Chromium (v3)')
+
+seurat_list_10k <- list()
+
+for (mth in mths_keep){
+  dat <- seurat_sce[, which(seurat_sce$tech == mth)]
+  genevarmod <- modelGeneVar(dat)
+  hvg_inds <- getTopHVGs(genevarmod)
+  seurat_list_10k[[mth]] <- dat[hvg_inds,]
+}
+```
+
+```{r}
+lapply(seurat_list_10k, dim)
+lapply(seurat_list_10k, function(x) c('CD4','CD8A', 'CD14','FCGR3A') %in% rownames(x))
+```
+
+#### Seurat (scran feats)
+
+```{r}
+seurat_list_scran <- list()
+
+n_scranfeat = 5000
+
+for (mth in mths_keep){
+  dat <- seurat_sce[, which(seurat_sce$tech == mth)]
+  genevarmod <- modelGeneVar(dat)
+  hvg_inds <- getTopHVGs(genevarmod)
+  seurat_list_scran[[mth]] <- dat[hvg_inds,]
+}
+```
+
+
+Actually this is still missing 2 of the marker genes in dropseq
+```{r}
+lapply(seurat_list_scran, dim)
+lapply(seurat_list_scran, function(x) c('CD4','CD8A', 'CD14','FCGR3A') %in% rownames(x))
+```
+
+
+#### Set up scelist
+
+```{r, eval = F}
+scelist <- list(zhengmix4eq = sce_full_Zhengmix4eq(),
+                zhengmix4uneq = sce_full_Zhengmix4uneq(),
+                zhengmix8eq = sce_full_Zhengmix8eq(),
+                scmix_10x = scmix_dat[[1]],
+                scmix_celseq = scmix_dat[[2]],
+                scmix_dropseq = scmix_dat[[3]],
+                pbmcsca_dropseq = seurat_list[[1]],
+                pbmcsca_indrops = seurat_list[[2]],
+                pbmcsca_10x = seurat_list[[3]])
+
+# eliminating any 0 count genes
+scelist[['zhengmix8eq']] <- scelist[['zhengmix8eq']][which(rowSums(counts(scelist[['zhengmix8eq']])) > 0),]
+
+scelist <- lapply(scelist, logNormCounts)
+
+# adding in HVG subsetted SCEs to the list
+for(i in 1:length(scelist)){
+  dat <- scelist[[i]]
+  fns <- names(scelist)
+  genevarmod <- modelGeneVar(dat)
+  hvg_inds <- getTopHVGs(genevarmod, fdr.threshold = .05)
+  scelist[[paste0(fns[i],'_HVGsub')]] <- dat[hvg_inds,]
+}
+
+matlist <- c(lapply(scelist, counts), 
+             lapply(scelist, logcounts))
+
+names(matlist) <- c(paste0(names(scelist),'.','counts'),
+                    paste0(names(scelist),'.','logcounts'))
+
+ct_list <- lapply(lapply(scelist, colData), '[', 'phenoid')
+
+ct_list <- c(ct_list, ct_list)
+names(ct_list) <- c(paste0(names(scelist),'.','counts'),
+                    paste0(names(scelist),'.','logcounts'))
+```
+
+##### Standard corral
+
+```{r, eval = F}
+corral_list <- lapply(matlist, corral)
+corral_embs <- lapply(corral_list, '[[', 'v')
+corral_umaps <- lapply(corral_embs, uwot::umap, n_neighbors = 30)
+# corral_tsnes <- lapply(corral_embs, tsne::tsne) 
+#too slow; even for 3k cells, 30 pcs took > 10min
+```
+
+##### Save 
+
+```{r, eval = F}
+save(scelist, file = '../data/1_scelist.rda')
+save(corral_umaps, corral_list, corral_embs, ct_list, file = '../data/1_corral_output.rda')
+```
+
+##### alt scelist (extended)
+
+Including alternative feature selection options for pbmc
+
+```{r, eval = F}
+scelist_ext <- list(zhengmix4eq = sce_full_Zhengmix4eq(),
+                zhengmix4uneq = sce_full_Zhengmix4uneq(),
+                zhengmix8eq = sce_full_Zhengmix8eq(),
+                scmix_10x = scmix_dat[[1]],
+                scmix_celseq = scmix_dat[[2]],
+                scmix_dropseq = scmix_dat[[3]],
+                pbmcsca_dropseq = seurat_list[[1]],
+                pbmcsca_indrops = seurat_list[[2]],
+                pbmcsca_10x = seurat_list[[3]],
+                pbmcsca_dropseq_10k = seurat_list_10k[[1]],
+                pbmcsca_indrops_10k = seurat_list_10k[[2]],
+                pbmcsca_10x_10k = seurat_list_10k[[3]],
+                pbmcsca_dropseq_scran = seurat_list_scran[[1]],
+                pbmcsca_indrops_scran = seurat_list_scran[[2]],
+                pbmcsca_10x_scran = seurat_list_scran[[3]])
+
+# eliminating any 0 count genes
+scelist_ext[['zhengmix8eq']] <- scelist_ext[['zhengmix8eq']][which(rowSums(counts(scelist_ext[['zhengmix8eq']])) > 0),]
+
+scelist_ext <- lapply(scelist_ext, logNormCounts)
+
+# adding in HVG subsetted SCEs to the list
+for(i in 1:length(scelist_ext)){
+  dat <- scelist_ext[[i]]
+  fns <- names(scelist_ext)
+  genevarmod <- modelGeneVar(dat)
+  hvg_inds <- getTopHVGs(genevarmod, fdr.threshold = .05)
+  scelist_ext[[paste0(fns[i],'_HVGsub')]] <- dat[hvg_inds,]
+}
+
+try(save(scelist_ext, file = '../data/1_scelist_extended.rda'))
+try(save(scelist_ext, file = 'data/1_scelist_extended.rda'))
+```
+
+
+### corral_trim outputs
+
+```{r, eval = F}
+corral_trim <- function(mat, pctile = .99){
+  upthresh <- quantile(mat, pctile)
+  downthresh <- quantile(mat, 1-pctile)
+  mat[which(mat > upthresh)] <- upthresh
+  mat[which(mat < downthresh)] <- downthresh
+  return(mat)
+}
+
+# NOT SAVED IN THE OBJECTS
+corraltrim_mats <- lapply(lapply(matlist, corral_preproc), corral_trim)
+corraltrim_list <- lapply(corraltrim_mats, compsvd)
+
+corraltrim_embs <- lapply(corraltrim_list, '[[', 'v')
+corraltrim_umaps <- lapply(corraltrim_embs, uwot::umap, n_neighbors = 30)
+
+
+# MORE CONSERVATIVE
+concorraltrim_mats <- lapply(lapply(matlist, corral_preproc), corral_trim, .999)
+concorraltrim_list <- lapply(concorraltrim_mats, compsvd)
+
+concorraltrim_embs <- lapply(concorraltrim_list, '[[', 'v')
+concorraltrim_umaps <- lapply(concorraltrim_embs, uwot::umap, n_neighbors = 30)
+```
+
+```{r, eval = F}
+save(corraltrim_umaps, corraltrim_list, corraltrim_embs, ct_list, corraltrim_mats, file = '../data/1_corraltrim_output.rda')
+
+save(corraltrim_umaps, corraltrim_list, corraltrim_embs, ct_list, file = 'data/1_corraltrim_output.rda')
+```
+
+#### [load corral results / scelist]
+
+```{r}
+load('../data/1_corral_output.rda')
+load('../data/1_scelist.rda')
+```
+
+#### [load pca results]
+
+```{r}
+load('../data/1_prcomp_output.rda')
+```
+
+
+## Paper figures
+
+### Fig 1
+
+Fig 1: Introduction to corral
+
+#### 1b. Cell Bench mRNA mixtures 
+(similar to OSCA figure)
+
+```{r}
+cbdat <- CellBench::load_all_data()
+
+# Choosing some HVGs for PCA:
+sce.8qc <- logNormCounts(cbdat$mrna_mix_sortseq)
+dec.8qc <- modelGeneVar(sce.8qc)
+hvgs.8qc <- getTopHVGs(dec.8qc, n=1000)
+
+sce.8qc <- sce.8qc[hvgs.8qc,]
+sce.8qc$mix <- as.factor(sce.8qc$mix)
+
+reducedDim(sce.8qc, 'PCA') <- prcomp(t(logcounts(sce.8qc)), scale. = T, center = T)$x
+sce.8qc <- corral_sce(sce.8qc, subset_row=hvgs.8qc, col.w=sizeFactors(sce.8qc))
+
+cowplot::plot_grid(
+  plot_embedding_sce(sce.8qc, which_embedding = 'PCA','mix', returngg = T, plot_title = 'PCA') + guides(color = F),
+  plot_embedding_sce(sce.8qc, which_embedding = 'corral','mix', returngg = T, plot_title = 'corral') + guides(color = F)
+)
+
+gridExtra::grid.arrange(
+    plotPCA(sce.8qc, colour_by="mix") + ggtitle("PCA") + guides(color = F),
+    plotReducedDim(sce.8qc, "corral", colour_by="mix") + ggtitle("corral") + guides(color = F),
+    ncol=2
+)
+```
+
+Version with no feature selection
+```{r}
+sce.8qcfull <- logNormCounts(cbdat$mrna_mix_sortseq)
+reducedDim(sce.8qcfull, 'PCA') <- prcomp(t(logcounts(sce.8qcfull)), scale. = T)$x
+sce.8qcfull <- corral_sce(sce.8qc)
+
+sce.8qcfull$mix <- as.factor(sce.8qc$mix)
+
+gridExtra::grid.arrange(
+    plotPCA(sce.8qcfull, colour_by="mix") + ggtitle("PCA"),
+    plotReducedDim(sce.8qcfull, "corral", colour_by="mix") + ggtitle("corral"),
+    ncol=2
+)
+
+cowplot::plot_grid(
+  plot_embedding_sce(sce.8qcfull, which_embedding = 'PCA','mix', returngg = T, plot_title = 'PCA') + guides(color = F),
+  plot_embedding_sce(sce.8qcfull, which_embedding = 'corral','mix', returngg = T, plot_title = 'corral')
+)
+```
+
+
+#### 1c. zm4 counts and logcounts embeddings
+
+```{r}
+fig1c_include <- list('zhengmix4eq.counts','zhengmix4eq.logcounts')
+
+
+cowplot::plot_grid(plotlist = lapply(fig1c_include, FUN = function(nam) plot_embedding(corral_embs[[nam]],plot_title = nam, color_vec = ct_list[[nam]][['phenoid']], returngg = TRUE, dimname = 'corral')), ncol = 2)
+
+cowplot::plot_grid(plotlist = lapply(fig1c_include, FUN = function(nam) plot_embedding(pca_embs[[nam]],plot_title = nam, color_vec = ct_list[[nam]][['phenoid']], returngg = TRUE, dimname = 'pca')), ncol = 2)
+
+cowplot::plot_grid(plotlist = append(lapply(fig1c_include, FUN = function(nam) plot_embedding(corral_embs[[nam]],plot_title = '', color_vec = ct_list[[nam]][['phenoid']], returngg = TRUE, dimname = 'corral') + theme(legend.position = 'none')), lapply(fig1c_include, FUN = function(nam) plot_embedding(pca_embs[[nam]],plot_title = '', color_vec = ct_list[[nam]][['phenoid']], returngg = TRUE, dimname = 'pca') + theme(legend.position = 'none'))), ncol = 2)
+```
+
+
+
+#### 1d. counts and logcounts clustering ARI
+
+Do clustering
+```{r}
+# 10 pcs
+corral_embs_10pcs <- lapply(corral_embs, '[', i =, j = 1:10)
+pca_embs_10pcs <- lapply(pca_embs, '[', i =, j = 1:10)
+
+corral_nngraph_clusters_10pcs <- lapply(corral_embs_10pcs, clusterRows, BLUSPARAM = NNGraphParam())
+pca_nngraph_clusters_10pcs <- lapply(pca_embs_10pcs, clusterRows, BLUSPARAM = NNGraphParam())
+```
+
+Compute ARI
+
+```{r}
+corral_ARI_10pcs <- list()
+pca_ARI_10pcs <- list()
+
+for(name in names(corral_nngraph_clusters_10pcs)){
+  corral_ARI_10pcs[[name]] <- pairwiseRand(as.factor(ct_list[[name]]$phenoid), 
+                                       corral_nngraph_clusters_10pcs[[name]], 
+                                       mode = 'index')
+  pca_ARI_10pcs[[name]] <- pairwiseRand(as.factor(ct_list[[name]]$phenoid), 
+                                       pca_nngraph_clusters_10pcs[[name]], 
+                                       mode = 'index')
+}
+```
+
+Consolidate data
+
+```{r}
+ARI_10pc_df_corral <- cbind(unlist(corral_ARI_10pcs),
+                          rep('corral',length(corral_ARI_10pcs)),
+                          data.frame(Reduce(rbind,strsplit(names(corral_nngraph_clusters), '.', fixed = T))))
+
+rownames(ARI_10pc_df_corral) <- paste0(rownames(ARI_10pc_df_corral), 'corral')
+names(ARI_10pc_df_corral) <- c('ARI','method','dataset','inp_mat')
+
+ARI_10pc_df_pca <- cbind(unlist(pca_ARI_10pcs),
+                          rep('pca',length(pca_ARI_10pcs)),
+                          data.frame(Reduce(rbind,strsplit(names(pca_nngraph_clusters), '.', fixed = T))))
+
+rownames(ARI_10pc_df_pca) <- paste0(rownames(ARI_10pc_df_pca), 'pca')
+names(ARI_10pc_df_pca) <- c('ARI','method','dataset','inp_mat')
+
+ARI_10pc_df <- rbind(ARI_10pc_df_corral, ARI_10pc_df_pca)
+
+ARI_df <- ARI_10pc_df[!grepl('HVG', ARI_10pc_df$dataset),]
+```
+
+Final version for paper
+
+```{r}
+fig1d_datasets <- c('scmix_10x', 'scmix_celseq', 'scmix_dropseq', 
+                    'zhengmix4eq', 'zhengmix4uneq', 'zhengmix8eq')
+
+ARI_df$ARI <- round(ARI_df$ARI, digits = 2)
+
+ggplot(ARI_df[which(ARI_df$dataset %in% fig1d_datasets),], aes(x = method, y = ARI, fill = method)) + geom_hline(yintercept=c(.25, .5, .75), linetype="dotted", col = 'gray', size = .2)+
+  theme_classic() + geom_bar(stat='identity', position = 'dodge') + 
+  geom_text(aes(label = ARI), size = 3, nudge_y = -.12) +
+    facet_grid(rows = vars(dataset), cols = vars(inp_mat), switch = 'y') + ggtitle('ARI: NNGraph clustering on 10pcs') + 
+  coord_flip() + theme(strip.text.y.left = element_text(angle = 0), axis.ticks = element_blank()) +
+  scale_fill_brewer(palette="Accent") + 
+  scale_x_discrete(limits = c('pca','corral'), labels = NULL) + xlab('Dataset')
+```
+
+### Fig 3
+
+#### 3a. biplot
+
+
+zm8 
+
+```{r}
+bpc <- biplot_corral(corral_list$zhengmix8eq.counts, color_vec = scelist$zhengmix8eq$phenoid, 
+                text_vec = rowData(scelist$zhengmix8eq)$symbol, text_size = 3, 
+              plot_title = 'Biplot: corral on Zhengmix8eq', coords = 'svd',
+              xjitter = .01, yjitter = .01)
+
+bpc
+
+# ggsave('figures/final_figs_savedplots/2a_zm8biplot.eps',plot = bpc, units = 'in', width = 12, height = 8)
+
+ggsave('final_figs_savedplots/2a_zm8biplot.eps',plot = bpc, units = 'in', width = 12, height = 8)
+```
+
+zm4
+
+```{r}
+biplot_corral(corral_list$zhengmix4eq.counts, color_vec = scelist$zhengmix4eq$phenoid, 
+                text_vec = rowData(scelist$zhengmix4eq)$symbol, text_size = 3, 
+              plot_title = 'Biplot: corral on Zhengmix4eq',
+              xjitter = .01, yjitter = .01, xpc = 1)
+```
+
+
+#### 3b. ridge plot
+
+```{r}
+zm8mat <- counts(scelist$zhengmix8eq)
+rownames(zm8mat) <- rowData(scelist$zhengmix8eq)$symbol
+
+cowplot::plot_grid(
+  ridge_plot(zm8mat, 'HLA-DRA', scelist$zhengmix8eq$phenoid, legend = F) + theme(axis.title.y = element_blank(), axis.text.y = element_text(size = 10), axis.title.x = element_text(size = 10)) + scale_y_discrete(limits=rev),
+  ridge_plot(zm8mat, 'GNLY', scelist$zhengmix8eq$phenoid, legend = F) + theme(axis.title.y = element_blank(), axis.text.y = element_text(size = 10), axis.title.x = element_text(size = 10)) + scale_y_discrete(limits=rev),
+  ridge_plot(zm8mat, 'LYZ', scelist$zhengmix8eq$phenoid, legend = F) + theme(axis.title.y = element_blank(), axis.text.y = element_text(size = 10), axis.title.x = element_text(size = 10)) + scale_y_discrete(limits=rev),
+  ridge_plot(zm8mat, 'CD74', scelist$zhengmix8eq$phenoid, legend = F) + theme(axis.title.y = element_blank(), axis.text.y = element_text(size = 10), axis.title.x = element_text(size = 10)) + scale_y_discrete(limits=rev),
+  ncol = 2)
+
+
+```
+
+version with color matching
+
+```{r}
+pf <- corral:::.generate_palette_func(ncolors = 9, pals::alphabet2())
+pf2 <- function(x) return(pf(x+1)[-1])
+cs_pf <- ggplot2::discrete_scale('fill','colscale',pf2)
+
+cowplot::plot_grid(
+  ridge_plot(zm8mat, 'HLA-DRA', scelist$zhengmix8eq$phenoid, legend = F) + theme(axis.title.y = element_blank(), axis.text.y = element_text(size = 10), axis.title.x = element_text(size = 10)) + scale_y_discrete(limits=rev) + cs_pf,
+  ridge_plot(zm8mat, 'GNLY', scelist$zhengmix8eq$phenoid, legend = F) + theme(axis.title.y = element_blank(), axis.text.y = element_text(size = 10), axis.title.x = element_text(size = 10)) + scale_y_discrete(limits=rev) + cs_pf,
+  ridge_plot(zm8mat, 'LYZ', scelist$zhengmix8eq$phenoid, legend = F) + theme(axis.title.y = element_blank(), axis.text.y = element_text(size = 10), axis.title.x = element_text(size = 10)) + scale_y_discrete(limits=rev) + cs_pf,
+  ridge_plot(zm8mat, 'CD74', scelist$zhengmix8eq$phenoid, legend = F) + theme(axis.title.y = element_blank(), axis.text.y = element_text(size = 10), axis.title.x = element_text(size = 10)) + scale_y_discrete(limits=rev) + cs_pf,
+  ncol = 2)
+
+
+ridge_plot(zm8mat, 'TYROBP', scelist$zhengmix8eq$phenoid, legend = F) + theme(axis.title.y = element_blank(), axis.text.y = element_text(size = 10), axis.title.x = element_text(size = 10)) + scale_y_discrete(limits=rev) + cs_pf
+
+ridge_plot(zm8mat, 'S100A8', scelist$zhengmix8eq$phenoid, legend = F) + theme(axis.title.y = element_blank(), axis.text.y = element_text(size = 10), axis.title.x = element_text(size = 10)) + scale_y_discrete(limits=rev) + cs_pf
+```
+
+
+#### corralsmooth
+
+```{r}
+corral_clip <- function(mat, b){
+  res <- corral_preproc(mat)
+  
+  m <- ncol(mat)
+  thresh <- sqrt(m*(1 + b))/m
+  
+  pct_cut <- (sum(res < -1*thresh) + sum(res > thresh))/length(mat)
+  print(pct_cut)
+  res[which(res > thresh)] <- thresh
+  res[which(res < -1*thresh)] <- -1*thresh
+  
+  return(res)
+}
+
+
+```
+
