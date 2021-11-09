@@ -508,3 +508,161 @@ corral_clip <- function(mat, b){
 
 ```
 
+## Fig 4
+
+#### 4a. scmix
+
+##### corralm
+
+```{r}
+scmix_corralm <- corralm(lapply(scmix_dat, counts))
+scmix_fplots <- list()
+
+gg_corralm1 <- plot_embedding(scmix_corralm$v, ellipse_vec = scmix_labs, 
+               color_vec = rep(rownames(scmix_corralm$batch_sizes),
+                               scmix_corralm$batch_sizes[,2]),
+               color_title = 'batch',
+               dimname = 'corralm',
+               plot_title = 'corralm: counts', returngg = T)
+
+plot_embedding(scmix_corralm$v, color_vec = scmix_labs, 
+               ellipse_vec = rep(rownames(scmix_corralm$batch_sizes),
+                               scmix_corralm$batch_sizes[,2]),
+               color_title = 'Cell line',
+               dimname = 'corralm',
+               plot_title = 'corralm: counts')
+
+plot(scmix_corralm$d)
+
+gg_corralm2 <- plot_embedding(scmix_corralm$v, ellipse_vec = scmix_labs, 
+               color_vec = rep(rownames(scmix_corralm$batch_sizes),
+                               scmix_corralm$batch_sizes[,2]),
+               color_title = 'batch',
+               dimname = 'corralm',
+               plot_title = '', xpc = 2, returngg = T)
+
+dataset_vec <- rep(rownames(scmix_corralm$batch_sizes),
+                               scmix_corralm$batch_sizes[,2])
+
+scmix_fplots$corralm1 <- gg_corralm1 + theme(legend.position = "none", 
+                                   axis.text = element_text(size=6), 
+                                   axis.title=element_text(size=8))
+scmix_fplots$corralm2 <- gg_corralm2 + theme(legend.position = "none", 
+                                   axis.text = element_text(size=6), 
+                                   axis.title=element_text(size=8))
+```
+
+##### SCTransform: seurat
+
+```{r}
+scmix_matlist <- lapply(scmix_dat, counts)
+
+seurat.list <- lapply(scmix_matlist, CreateSeuratObject)
+
+for (i in 1:length(seurat.list)) {
+  seurat.list[[i]] <- SCTransform(seurat.list[[i]], verbose = TRUE)
+}
+  
+features <- SelectIntegrationFeatures(object.list = seurat.list, nfeatures = 3000)
+seurat.list <- PrepSCTIntegration(object.list = seurat.list, anchor.features = features, verbose = TRUE)
+
+anchors <- FindIntegrationAnchors(object.list = seurat.list, normalization.method = "SCT", 
+                                  anchor.features = features, verbose = TRUE)
+integrated <- IntegrateData(anchorset = anchors, normalization.method = "SCT", 
+                            verbose = TRUE)
+
+integrated <- RunPCA(object = integrated)
+seurat_emb <- Embeddings(integrated)[,1:10]
+```
+
+```{r}
+gg_Seurat1 <- plot_embedding(seurat_emb, color_vec = dataset_vec, ellipse_vec = scmix_labs,
+               plot_title = 'SCTransform + integration (Seurat)',
+               dimname = 'SeuratDim',
+               color_title = 'batch', xpc = 1, returngg = T)
+gg_Seurat2 <- plot_embedding(seurat_emb, color_vec = dataset_vec, ellipse_vec = scmix_labs,
+               plot_title = '',
+               dimname = 'SeuratDim',
+               color_title = 'batch', xpc = 2, returngg = T)
+
+scmix_fplots$Seurat1 <- gg_Seurat1  + theme(legend.position = "none", 
+                                   axis.text = element_text(size=6), 
+                                   axis.title=element_text(size=8))
+scmix_fplots$Seurat2 <- gg_Seurat2  + theme(legend.position = "none", 
+                                   axis.text = element_text(size=6), 
+                                   axis.title=element_text(size=8))
+```
+
+
+##### Harmony + corralm
+
+```{r}
+install_github("immunogenomics/harmony")
+library(harmony)
+scmix_corralmHM <- HarmonyMatrix(scmix_corralm$v, dataset_vec, do_pca = FALSE)
+
+gg_corralmHM1<- plot_embedding(scmix_corralmHM, color_vec = dataset_vec, ellipse_vec = scmix_labs,
+               plot_title = 'corralm + HarmonyMatrix',
+               dimname = 'corralm_harmony',
+               color_title = 'batch', xpc = 1, returngg = T)
+gg_corralmHM2<- plot_embedding(scmix_corralmHM, color_vec = dataset_vec, ellipse_vec = scmix_labs,
+               plot_title = '',
+               dimname = 'corralm_harmony',
+               color_title = 'batch', xpc = 2, returngg = T)
+
+scmix_fplots$corralmHM1 <- gg_corralmHM1 + theme(legend.position = "none", 
+                                   axis.text = element_text(size=6), 
+                                   axis.title=element_text(size=8))
+scmix_fplots$corralmHM2 <- gg_corralmHM2 + theme(legend.position = "none", 
+                                   axis.text = element_text(size=6), 
+                                   axis.title=element_text(size=8))
+```
+
+##### HarmonyMatrix
+
+```{r}
+scmix_HM <- HarmonyMatrix(Reduce(cbind, lapply(scmix_dat, logcounts)), dataset_vec)
+gg_HM1 <- plot_embedding(scmix_HM, color_vec = dataset_vec, ellipse_vec = scmix_labs,
+               plot_title = 'HarmonyMatrix',
+               dimname = 'HarmonyMatrix',
+               color_title = 'batch', xpc = 1, returngg = T)
+gg_HM2 <- plot_embedding(scmix_HM, color_vec = dataset_vec, ellipse_vec = scmix_labs,
+               plot_title = '',
+               dimname = 'HarmonyMatrix',
+               color_title = 'batch', xpc = 2, returngg = T)
+
+scmix_fplots$HM1 <- gg_HM1 + theme(legend.position = "none", 
+                                   axis.text = element_text(size=6),
+                                   axis.title=element_text(size=8))
+scmix_fplots$HM2 <- gg_HM2 + theme(legend.position = "none", 
+                                   axis.text = element_text(size=6), 
+                                   axis.title=element_text(size=8))
+
+
+```
+
+
+##### benchmarking
+
+```{r}
+library(rbenchmark)
+HMmat <- Reduce(cbind, lapply(scmix_dat, logcounts))
+
+scmix_time <- benchmark(corralm = {corralm(lapply(scmix_dat, counts))},
+                        Seurat = {for (i in 1:length(seurat.list)) {
+                          seurat.list[[i]] <- SCTransform(seurat.list[[i]], verbose = TRUE)
+                        }
+                          
+                          features <- SelectIntegrationFeatures(object.list = seurat.list, nfeatures = 3000)
+                          seurat.list <- PrepSCTIntegration(object.list = seurat.list, anchor.features = features, verbose = TRUE)
+                          
+                          anchors <- FindIntegrationAnchors(object.list = seurat.list, normalization.method = "SCT", 
+                                                            anchor.features = features, verbose = TRUE)
+                          integrated <- IntegrateData(anchorset = anchors, normalization.method = "SCT", 
+                                                      verbose = TRUE)
+                          
+                          integrated <- RunPCA(object = integrated)},
+                        Harmony = {HarmonyMatrix(HMmat, dataset_vec)})
+
+save(scmix_time, file ='scmix_time.rda')
+```
