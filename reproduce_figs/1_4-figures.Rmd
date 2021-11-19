@@ -17,125 +17,13 @@ try(source('../R/utils.R'))
 ```
 
 ### Imports and data setup
-```{r, scmix_setup, eval = F}
+```{r, scmix_setup}
 scmix_dat <- load_all_data()[1:3]
 scmix_genes.use <- Reduce(intersect,lapply(scmix_dat,rownames))
 scmix_dat <- lapply(scmix_dat,'[',scmix_genes.use)
 for (i in 1:3){
   names(colData(scmix_dat[[i]]))[which(names(colData(scmix_dat[[i]])) == 'cell_line')] <- 'phenoid'
 }
-```
-
-#### SeuratData download
-
-```{r seuratdata_download, eval = FALSE}
-SeuratData::InstallData('pbmcsca')
-```
-
-
-#### Seurat (5k feats)
-
-Creating Seurat object (as.SingleCellExperiment)
-
-```{r, eval = F}
-dat_name <- 'pbmcsca'
-seurat_obj <- eval(as.name(dat_name))
-
-fullsce <- as.SingleCellExperiment(seurat_obj)
-fullsce$tech <- fullsce$Method
-fullsce$celltype <- fullsce$CellType
-
-mths <- unique(fullsce$tech)
-
-dat.list <- SplitObject(seurat_obj, split.by = "Method")
-dat.list <- dat.list[mths]
-for (i in 1:length(dat.list)) {
-    dat.list[[i]] <- NormalizeData(dat.list[[i]], verbose = FALSE)
-    dat.list[[i]] <- FindVariableFeatures(dat.list[[i]], selection.method = "vst", 
-        nfeatures = 5000, verbose = FALSE)
-}
-
-seurat_sce <- fullsce[,which(fullsce$tech %in% mths)]
-names(colData(seurat_sce))[which(names(colData(seurat_sce)) == 'celltype')] <- 'phenoid'
-
-mths_keep <- c('Drop-seq', 'inDrops','10x Chromium (v3)')
-
-seurat_list <- list()
-
-for (mth in mths_keep){
-  dat <- seurat_sce[, which(seurat_sce$tech == mth)]
-  genevarmod <- modelGeneVar(dat)
-  hvg_inds <- getTopHVGs(genevarmod)
-  seurat_list[[mth]] <- dat[hvg_inds,]
-}
-```
-
-```{r}
-lapply(seurat_list, dim)
-lapply(seurat_list, function(x) c('CD4','CD8A', 'CD14','FCGR3A') %in% rownames(x))
-```
-
-
-#### Seurat (10k feats)
-
-```{r, eval = F}
-dat_name <- 'pbmcsca'
-seurat_obj <- eval(as.name(dat_name))
-
-fullsce <- as.SingleCellExperiment(seurat_obj)
-fullsce$tech <- fullsce$Method
-fullsce$celltype <- fullsce$CellType
-
-mths <- unique(fullsce$tech)
-
-dat.list <- SplitObject(seurat_obj, split.by = "Method")
-dat.list <- dat.list[mths]
-for (i in 1:length(dat.list)) {
-    dat.list[[i]] <- NormalizeData(dat.list[[i]], verbose = FALSE)
-    dat.list[[i]] <- FindVariableFeatures(dat.list[[i]], selection.method = "vst", 
-        nfeatures = 10000, verbose = FALSE)
-}
-
-seurat_sce <- fullsce[,which(fullsce$tech %in% mths)]
-names(colData(seurat_sce))[which(names(colData(seurat_sce)) == 'celltype')] <- 'phenoid'
-
-mths_keep <- c('Drop-seq', 'inDrops','10x Chromium (v3)')
-
-seurat_list_10k <- list()
-
-for (mth in mths_keep){
-  dat <- seurat_sce[, which(seurat_sce$tech == mth)]
-  genevarmod <- modelGeneVar(dat)
-  hvg_inds <- getTopHVGs(genevarmod)
-  seurat_list_10k[[mth]] <- dat[hvg_inds,]
-}
-```
-
-```{r}
-lapply(seurat_list_10k, dim)
-lapply(seurat_list_10k, function(x) c('CD4','CD8A', 'CD14','FCGR3A') %in% rownames(x))
-```
-
-#### Seurat (scran feats)
-
-```{r}
-seurat_list_scran <- list()
-
-n_scranfeat = 5000
-
-for (mth in mths_keep){
-  dat <- seurat_sce[, which(seurat_sce$tech == mth)]
-  genevarmod <- modelGeneVar(dat)
-  hvg_inds <- getTopHVGs(genevarmod)
-  seurat_list_scran[[mth]] <- dat[hvg_inds,]
-}
-```
-
-
-Actually this is still missing 2 of the marker genes in dropseq
-```{r}
-lapply(seurat_list_scran, dim)
-lapply(seurat_list_scran, function(x) c('CD4','CD8A', 'CD14','FCGR3A') %in% rownames(x))
 ```
 
 
@@ -147,10 +35,7 @@ scelist <- list(zhengmix4eq = sce_full_Zhengmix4eq(),
                 zhengmix8eq = sce_full_Zhengmix8eq(),
                 scmix_10x = scmix_dat[[1]],
                 scmix_celseq = scmix_dat[[2]],
-                scmix_dropseq = scmix_dat[[3]],
-                pbmcsca_dropseq = seurat_list[[1]],
-                pbmcsca_indrops = seurat_list[[2]],
-                pbmcsca_10x = seurat_list[[3]])
+                scmix_dropseq = scmix_dat[[3]])
 
 # eliminating any 0 count genes
 scelist[['zhengmix8eq']] <- scelist[['zhengmix8eq']][which(rowSums(counts(scelist[['zhengmix8eq']])) > 0),]
@@ -196,77 +81,19 @@ save(scelist, file = '../data/1_scelist.rda')
 save(corral_umaps, corral_list, corral_embs, ct_list, file = '../data/1_corral_output.rda')
 ```
 
-##### alt scelist (extended)
-
-Including alternative feature selection options for pbmc
+##### prcomp-equivalent results
 
 ```{r, eval = F}
-scelist_ext <- list(zhengmix4eq = sce_full_Zhengmix4eq(),
-                zhengmix4uneq = sce_full_Zhengmix4uneq(),
-                zhengmix8eq = sce_full_Zhengmix8eq(),
-                scmix_10x = scmix_dat[[1]],
-                scmix_celseq = scmix_dat[[2]],
-                scmix_dropseq = scmix_dat[[3]],
-                pbmcsca_dropseq = seurat_list[[1]],
-                pbmcsca_indrops = seurat_list[[2]],
-                pbmcsca_10x = seurat_list[[3]],
-                pbmcsca_dropseq_10k = seurat_list_10k[[1]],
-                pbmcsca_indrops_10k = seurat_list_10k[[2]],
-                pbmcsca_10x_10k = seurat_list_10k[[3]],
-                pbmcsca_dropseq_scran = seurat_list_scran[[1]],
-                pbmcsca_indrops_scran = seurat_list_scran[[2]],
-                pbmcsca_10x_scran = seurat_list_scran[[3]])
+tmatlist <- lapply(matlist, t)
+scaled_transposed_matlist <- lapply(tmatlist, scale, center = TRUE, scale = TRUE)
 
-# eliminating any 0 count genes
-scelist_ext[['zhengmix8eq']] <- scelist_ext[['zhengmix8eq']][which(rowSums(counts(scelist_ext[['zhengmix8eq']])) > 0),]
-
-scelist_ext <- lapply(scelist_ext, logNormCounts)
-
-# adding in HVG subsetted SCEs to the list
-for(i in 1:length(scelist_ext)){
-  dat <- scelist_ext[[i]]
-  fns <- names(scelist_ext)
-  genevarmod <- modelGeneVar(dat)
-  hvg_inds <- getTopHVGs(genevarmod, fdr.threshold = .05)
-  scelist_ext[[paste0(fns[i],'_HVGsub')]] <- dat[hvg_inds,]
-}
-
-try(save(scelist_ext, file = '../data/1_scelist_extended.rda'))
-try(save(scelist_ext, file = 'data/1_scelist_extended.rda'))
-```
-
-
-### corral_trim outputs
-
-```{r, eval = F}
-corral_trim <- function(mat, pctile = .99){
-  upthresh <- quantile(mat, pctile)
-  downthresh <- quantile(mat, 1-pctile)
-  mat[which(mat > upthresh)] <- upthresh
-  mat[which(mat < downthresh)] <- downthresh
-  return(mat)
-}
-
-# NOT SAVED IN THE OBJECTS
-corraltrim_mats <- lapply(lapply(matlist, corral_preproc), corral_trim)
-corraltrim_list <- lapply(corraltrim_mats, compsvd)
-
-corraltrim_embs <- lapply(corraltrim_list, '[[', 'v')
-corraltrim_umaps <- lapply(corraltrim_embs, uwot::umap, n_neighbors = 30)
-
-
-# MORE CONSERVATIVE
-concorraltrim_mats <- lapply(lapply(matlist, corral_preproc), corral_trim, .999)
-concorraltrim_list <- lapply(concorraltrim_mats, compsvd)
-
-concorraltrim_embs <- lapply(concorraltrim_list, '[[', 'v')
-concorraltrim_umaps <- lapply(concorraltrim_embs, uwot::umap, n_neighbors = 30)
+pca_list <- lapply(scaled_transposed_matlist, compsvd)
+pca_embs <- lapply(pca_list, '[[', 'u')
+pca_umaps <- lapply(pca_embs, uwot::umap, n_neighbors = 30)
 ```
 
 ```{r, eval = F}
-save(corraltrim_umaps, corraltrim_list, corraltrim_embs, ct_list, corraltrim_mats, file = '../data/1_corraltrim_output.rda')
-
-save(corraltrim_umaps, corraltrim_list, corraltrim_embs, ct_list, file = 'data/1_corraltrim_output.rda')
+save(pca_umaps, pca_list, pca_embs, ct_list, file = '../data/1_prcomp_output.rda')
 ```
 
 #### [load corral results / scelist]
@@ -290,7 +117,7 @@ load('../data/1_prcomp_output.rda')
 Fig 1: Introduction to corral
 
 #### 1b. Cell Bench mRNA mixtures 
-(similar to OSCA figure)
+(Adapted from section on `corral` in "Orchestrating Single Cell Analysis")
 
 ```{r}
 cbdat <- CellBench::load_all_data()
@@ -362,8 +189,8 @@ Do clustering
 corral_embs_10pcs <- lapply(corral_embs, '[', i =, j = 1:10)
 pca_embs_10pcs <- lapply(pca_embs, '[', i =, j = 1:10)
 
-corral_nngraph_clusters_10pcs <- lapply(corral_embs_10pcs, clusterRows, BLUSPARAM = NNGraphParam())
-pca_nngraph_clusters_10pcs <- lapply(pca_embs_10pcs, clusterRows, BLUSPARAM = NNGraphParam())
+corral_nngraph_clusters <- lapply(corral_embs_10pcs, clusterRows, BLUSPARAM = NNGraphParam())
+pca_nngraph_clusters <- lapply(pca_embs_10pcs, clusterRows, BLUSPARAM = NNGraphParam())
 ```
 
 Compute ARI
@@ -372,12 +199,12 @@ Compute ARI
 corral_ARI_10pcs <- list()
 pca_ARI_10pcs <- list()
 
-for(name in names(corral_nngraph_clusters_10pcs)){
+for(name in names(corral_nngraph_clusters)){
   corral_ARI_10pcs[[name]] <- pairwiseRand(as.factor(ct_list[[name]]$phenoid), 
-                                       corral_nngraph_clusters_10pcs[[name]], 
+                                       corral_nngraph_clusters[[name]], 
                                        mode = 'index')
   pca_ARI_10pcs[[name]] <- pairwiseRand(as.factor(ct_list[[name]]$phenoid), 
-                                       pca_nngraph_clusters_10pcs[[name]], 
+                                       pca_nngraph_clusters[[name]], 
                                        mode = 'index')
 }
 ```
@@ -435,10 +262,6 @@ bpc <- biplot_corral(corral_list$zhengmix8eq.counts, color_vec = scelist$zhengmi
               xjitter = .01, yjitter = .01)
 
 bpc
-
-# ggsave('figures/final_figs_savedplots/2a_zm8biplot.eps',plot = bpc, units = 'in', width = 12, height = 8)
-
-ggsave('final_figs_savedplots/2a_zm8biplot.eps',plot = bpc, units = 'in', width = 12, height = 8)
 ```
 
 zm4
@@ -454,6 +277,7 @@ biplot_corral(corral_list$zhengmix4eq.counts, color_vec = scelist$zhengmix4eq$ph
 #### 3b. ridge plot
 
 ```{r}
+library(ggridges)
 zm8mat <- counts(scelist$zhengmix8eq)
 rownames(zm8mat) <- rowData(scelist$zhengmix8eq)$symbol
 
@@ -488,61 +312,47 @@ ridge_plot(zm8mat, 'S100A8', scelist$zhengmix8eq$phenoid, legend = F) + theme(ax
 ```
 
 
-#### corralsmooth
-
-```{r}
-corral_clip <- function(mat, b){
-  res <- corral_preproc(mat)
-  
-  m <- ncol(mat)
-  thresh <- sqrt(m*(1 + b))/m
-  
-  pct_cut <- (sum(res < -1*thresh) + sum(res > thresh))/length(mat)
-  print(pct_cut)
-  res[which(res > thresh)] <- thresh
-  res[which(res < -1*thresh)] <- -1*thresh
-  
-  return(res)
-}
-
-
-```
-
 ## Fig 4
 
 #### 4a. scmix
 
-##### corralm
+##### corralm 
 
 ```{r}
-scmix_corralm <- corralm(lapply(scmix_dat, counts))
-scmix_fplots <- list()
+scmix_integ <- list()
+scmix_integ$corralm_counts <- corralm(lapply(scmix_dat, counts))
+scmix_integ$corralm_logcounts <- corralm(lapply(scmix_dat, logcounts))
 
-gg_corralm1 <- plot_embedding(scmix_corralm$v, ellipse_vec = scmix_labs, 
-               color_vec = rep(rownames(scmix_corralm$batch_sizes),
-                               scmix_corralm$batch_sizes[,2]),
+scmix_fplots <- list()
+scmix_labs <- c(scelist$scmix_10x$phenoid,
+                scelist$scmix_celseq$phenoid,
+                scelist$scmix_dropseq$phenoid)
+
+gg_corralm1 <- plot_embedding(scmix_integ$corralm_counts$v, ellipse_vec = scmix_labs, 
+               color_vec = rep(rownames(scmix_integ$corralm_counts$batch_sizes),
+                               scmix_integ$corralm_counts$batch_sizes[,2]),
                color_title = 'batch',
                dimname = 'corralm',
                plot_title = 'corralm: counts', returngg = T)
 
-plot_embedding(scmix_corralm$v, color_vec = scmix_labs, 
-               ellipse_vec = rep(rownames(scmix_corralm$batch_sizes),
-                               scmix_corralm$batch_sizes[,2]),
+plot_embedding(scmix_integ$corralm_counts$v, color_vec = scmix_labs, 
+               ellipse_vec = rep(rownames(scmix_integ$corralm_counts$batch_sizes),
+                               scmix_integ$corralm_counts$batch_sizes[,2]),
                color_title = 'Cell line',
                dimname = 'corralm',
                plot_title = 'corralm: counts')
 
-plot(scmix_corralm$d)
+plot(scmix_integ$corralm_counts$d)
 
-gg_corralm2 <- plot_embedding(scmix_corralm$v, ellipse_vec = scmix_labs, 
-               color_vec = rep(rownames(scmix_corralm$batch_sizes),
-                               scmix_corralm$batch_sizes[,2]),
+gg_corralm2 <- plot_embedding(scmix_integ$corralm_counts$v, ellipse_vec = scmix_labs, 
+               color_vec = rep(rownames(scmix_integ$corralm_counts$batch_sizes),
+                               scmix_integ$corralm_counts$batch_sizes[,2]),
                color_title = 'batch',
                dimname = 'corralm',
                plot_title = '', xpc = 2, returngg = T)
 
-dataset_vec <- rep(rownames(scmix_corralm$batch_sizes),
-                               scmix_corralm$batch_sizes[,2])
+dataset_vec <- rep(rownames(scmix_integ$corralm_counts$batch_sizes),
+                               scmix_integ$corralm_counts$batch_sizes[,2])
 
 scmix_fplots$corralm1 <- gg_corralm1 + theme(legend.position = "none", 
                                    axis.text = element_text(size=6), 
@@ -551,6 +361,7 @@ scmix_fplots$corralm2 <- gg_corralm2 + theme(legend.position = "none",
                                    axis.text = element_text(size=6), 
                                    axis.title=element_text(size=8))
 ```
+
 
 ##### SCTransform: seurat
 
@@ -599,13 +410,18 @@ scmix_fplots$Seurat2 <- gg_Seurat2  + theme(legend.position = "none",
 ```{r}
 install_github("immunogenomics/harmony")
 library(harmony)
-scmix_corralmHM <- HarmonyMatrix(scmix_corralm$v, dataset_vec, do_pca = FALSE)
 
-gg_corralmHM1<- plot_embedding(scmix_corralmHM, color_vec = dataset_vec, ellipse_vec = scmix_labs,
+dataset_vec <- rep(rownames(scmix_integ$corralm_counts$batch_sizes),
+                               scmix_integ$corralm_counts$batch_sizes[,2])
+
+scmix_integ$corralm_countsHM <- HarmonyMatrix(scmix_integ$corralm_counts$v, dataset_vec, do_pca = FALSE)
+scmix_integ$corralm_logcountsHM <- HarmonyMatrix(scmix_integ$corralm_logcounts$v, dataset_vec, do_pca = FALSE)
+
+gg_corralmHM1<- plot_embedding(scmix_integ$corralm_countsHM, color_vec = dataset_vec, ellipse_vec = scmix_labs,
                plot_title = 'corralm + HarmonyMatrix',
                dimname = 'corralm_harmony',
                color_title = 'batch', xpc = 1, returngg = T)
-gg_corralmHM2<- plot_embedding(scmix_corralmHM, color_vec = dataset_vec, ellipse_vec = scmix_labs,
+gg_corralmHM2<- plot_embedding(scmix_integ$corralm_countsHM, color_vec = dataset_vec, ellipse_vec = scmix_labs,
                plot_title = '',
                dimname = 'corralm_harmony',
                color_title = 'batch', xpc = 2, returngg = T)
@@ -621,12 +437,13 @@ scmix_fplots$corralmHM2 <- gg_corralmHM2 + theme(legend.position = "none",
 ##### HarmonyMatrix
 
 ```{r}
-scmix_HM <- HarmonyMatrix(Reduce(cbind, lapply(scmix_dat, logcounts)), dataset_vec)
-gg_HM1 <- plot_embedding(scmix_HM, color_vec = dataset_vec, ellipse_vec = scmix_labs,
+scmix_integ$HM <- HarmonyMatrix(Reduce(cbind, lapply(scmix_dat, logcounts)), dataset_vec)
+scmix_integ$HMcounts<- HarmonyMatrix(Reduce(cbind, lapply(scmix_dat, counts)), dataset_vec)
+gg_HM1 <- plot_embedding(scmix_integ$HM, color_vec = dataset_vec, ellipse_vec = scmix_labs,
                plot_title = 'HarmonyMatrix',
                dimname = 'HarmonyMatrix',
                color_title = 'batch', xpc = 1, returngg = T)
-gg_HM2 <- plot_embedding(scmix_HM, color_vec = dataset_vec, ellipse_vec = scmix_labs,
+gg_HM2 <- plot_embedding(scmix_integ$HM, color_vec = dataset_vec, ellipse_vec = scmix_labs,
                plot_title = '',
                dimname = 'HarmonyMatrix',
                color_title = 'batch', xpc = 2, returngg = T)
@@ -666,3 +483,40 @@ scmix_time <- benchmark(corralm = {corralm(lapply(scmix_dat, counts))},
 
 save(scmix_time, file ='scmix_time.rda')
 ```
+
+
+#### 4b. scal var plots
+
+```{r}
+maxY <- 1.6
+
+svplots <- list()
+svplots$corralm_counts <- scal_var(scmix_integ$corralm_counts, plot_subtitle = 'corralm on counts', max_y = maxY, returngg = TRUE)
+svplots$corralm_logcounts <- scal_var(scmix_integ$corralm_logcounts, plot_subtitle = 'corralm on logcounts', max_y = maxY, returngg = TRUE)
+
+bv <- rep(rownames(scmix_integ$corralm_counts$batch_sizes),scmix_integ$corralm_counts$batch_sizes[,2])
+
+svplots$harmony_counts <- scal_var(scmix_integ$HMcounts, bv, plot_subtitle = 'Harmony with PCA, counts', max_y = maxY, returngg = TRUE)
+
+svplots$harmony_logcounts <- scal_var(scmix_integ$HM, bv, plot_subtitle = 'Harmony with PCA, logcounts', max_y = maxY, returngg = TRUE)
+
+svplots$harmonycorralm_counts <- scal_var(scmix_integ$corralm_countsHM, bv, plot_subtitle = 'Harmony with corralm, counts', max_y = maxY, returngg = TRUE)
+
+svplots$harmonycorralm_logcounts <- scal_var(scmix_integ$corralm_logcountsHM, bv, plot_subtitle = 'Harmony with corralm, logcounts', max_y = maxY, returngg = TRUE)
+
+svplots$sctransform <- scal_var(seurat_emb, batchvec = bv, plot_subtitle = 'SCTransform, counts', max_y = maxY, returngg = TRUE)
+
+cowplot::plot_grid(plotlist = svplots, nrow = 1)
+
+svplots_clean <- lapply(svplots, FUN = function(x) x + 
+                          theme(legend.position = 'none', 
+                                plot.title = element_blank(),
+                                axis.title.y = element_blank(),
+                                axis.title.x = element_blank(),
+                                plot.subtitle = element_text(size=8)))
+
+cowplot::plot_grid(plotlist = svplots_clean, nrow = 1)
+
+#cowplot::plot_grid(plotlist = svplots_clean, ncol = 2)
+```
+

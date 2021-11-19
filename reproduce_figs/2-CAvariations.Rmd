@@ -12,14 +12,19 @@ knitr::opts_chunk$set(echo = TRUE)
 ```
 
 
+```{r, include = F, eval = F}
+setwd('reproduce_figs/')
+```
+
 ```{r, message = F}
 library(SingleCellExperiment)
 library(corral)
-source('figures/load_pkgs.R')
-source('figures/utils.R')
-source('figures/plotting_utils.R')
-source('glmpca_feat_selection.R')
+try(source('../R/load_pkgs.R'))
+try(source('../R/utils.R'))
+try(source('../R/plotting_utils.R'))
+try(source('../R/glmpca_feat_selection.R'))
 ```
+
 
 Setting the directory for where plots will be saved
 ```{r, message = F}
@@ -28,8 +33,8 @@ Setting the directory for where plots will be saved
 
 
 
-plot_dir <- 'figures/5_plots_7.4.21topfeats/'
-save_dir <- 'data/0_make_all_transformations_data_7.4.21topfeats/'
+plot_dir <- '../figs_50pcss/'
+save_dir <- '../data/0_make_all_transformations_data_50pcs/'
 
 checkdir(plot_dir)
 ```
@@ -48,42 +53,14 @@ scelist <- readRDS(file = paste0(save_dir, 'scelist.rds'))
 decomp_list <- readRDS(file = paste0(save_dir, 'decomp_list.rds'))
 emb_list <- readRDS(file = paste0(save_dir, 'emb_list.rds'))
 
-try({
-  umap_lists <- list(nn10 = readRDS(file = paste0(save_dir, 'umap_list_nn10.rds')),
-                     nn50 = readRDS(file = paste0(save_dir, 'umap_list_nn50.rds')),
-                     nn80 = readRDS(file = paste0(save_dir, 'umap_list_nn80.rds')))
-})
-
 # reading in ctlist from 02_clust_ARI_transformations_data
 
 ctlist <- readRDS(file = paste0(save_dir, 'ctlist.rds'))
-clust_lists <- list('nngraph' = readRDS(file = paste0(save_dir, 'nngraph_clust.rds')),
-                    'louvain' = readRDS(file = paste0(save_dir, 'louvain_clust.rds')))
 
-```
+clust_lists <- list('nngraph' = readRDS(file = paste0(save_dir, 'nngraph_clust.rds')))
 
-
-
-### generating panels
-
-```{r}
-for(nn in names(umap_lists)){
-  print(nn)
-  ggs <- umap_plotlist(umap_lists[[nn]], subtitle_text = nn, ctl = ctlist)
-  lapply(names(ggs), FUN = function(gnam) savegg2pdf(ggs[[gnam]], 
-                                                     nam = paste0(gnam,'_',nn),
-                                                     wdim = 12, hdim = 15, 
-                                                     dir = plot_dir_umap))
-  
-  xeno_plots <- lapply(as.list(names(umap_lists[[nn]][['xenopus']])), FUN = function(nam) umap_plotpanel(x = umap_lists[[nn]][['xenopus']][[nam]], cts = ctlist$xenopus, mthname = nam))
-  names(xeno_plots) <- names(umap_lists[[nn]][['xenopus']])
-  lapply(names(xeno_plots), FUN = function(gnam) savegg2pdf(xeno_plots[[gnam]], 
-                                                     nam = paste0('xeno_',gnam,'_',nn),
-                                                     wdim = 15, hdim = 12, 
-                                                     dir = plot_dir_umap))
-}
-
-
+# clust_lists <- list('nngraph' = readRDS(file = paste0(save_dir, 'nngraph_clust.rds')),
+#                     'louvain' = readRDS(file = paste0(save_dir, 'louvain_clust.rds')))
 
 ```
 
@@ -109,14 +86,9 @@ savegg2pdf(time_gg, 'time_comp', wdim = 5, hdim = 5)
 
 
 
-
-
 ## 2. ARI
 
 ```{r}
-# COPIED STRAIGHT FROM THE ARI over PCs section above
-# lim 30 pc version: facet by clustering method (grouped by file name)
-# setting up master dataframe
 ARI_df_allclusts <- data.frame()
 for(cmth in names(clust_lists)){
   ARIs <- lapply(clust_lists[[cmth]], '[[','ARI_df')
@@ -125,14 +97,8 @@ for(cmth in names(clust_lists)){
   ARI_df_allclusts <- rbind(ARI_df_allclusts, ARI_df)
 }
 
-for(dat in unique(ARI_df_allclusts$dataset)){
-  print(dat)
-  ggobj <- plot_datfacetARI(ARI_df_allclusts[intersect(which(ARI_df_allclusts$npc < 31), which(ARI_df_allclusts$dataset == dat)),], plot_title = dat, facetby = 'cmethod')
-  savegg2pdf(ggobj, paste0(dat,'_lim30'), dir = ari_dir_umap)
-}
-
 # code for taking the avg or median of ARI across multiple glmpca seed instances
-collapse_glmpca <- function(df, aggfun = mean){
+collapse_glmpca <- function(df){
   res <- data.frame()
   for(n in unique(df$npc)){
     for(cm in unique(df$cmethod)){
@@ -164,7 +130,49 @@ ARI_df_gsumm <- rbind(ARI_df_allclusts,  cres[,1:5])
 ### ARI heatmap
 
 ```{r}
-mths_keep <- c('std','ftalt_p','varstab','anscombe_std','ft_x_std','deflate','glmpca')
+best_per_mth <- function(df){
+  mths <- as.list(unique(df$method))
+  bymth <- lapply(mths, function(x) df[which(df$method == x),])
+  ARIs <- lapply(bymth, function(x) x[which(x$ARI == max(x$ARI))[1],])
+  Reduce(rbind, ARIs)
+}
+
+ARI_df <- Reduce(rbind, lapply(clust_lists$nngraph, '[[','ARI_df'))
+
+# ARI_df$method[grep('glmpca',ARI_df$method)] <- 'glmpca'
+
+summed_ARI <- Reduce(rbind, lapply(as.list(unique(ARI_df$dataset)), FUN = function(datname) best_per_mth(ARI_df[which(ARI_df$dataset == datname),])))
+
+datnames <- c("zhengmix4eq" = 'Zhengmix4eq',
+              "zhengmix4uneq" = 'Zhengmix4uneq', 
+              "zhengmix8eq" = 'Zhengmix8eq',
+              'baron_panc' = 'Pancreas: Baron',
+              'lawlor_panc' = 'Pancreas: Lawlor',
+              'muraro_panc' = 'Pancreas: Muraro',
+              'chen_brain' = 'Brain: Chen',
+              'darmanis_brain' = 'Brain: Darmanis',
+              'xenopus' = 'Aztekin xenopus tail')
+
+# remapping the dataset name column
+summed_ARI$dataset_name <- datnames[summed_ARI$dataset]
+
+ari_gg <- ggplot(data = summed_ARI, aes(x = method, y = dataset_name, fill = ARI)) + 
+  geom_tile() + 
+  scale_fill_viridis_b(breaks = seq(0, 1, .15)) + 
+  # alt: scale_fill_viridis_b(breaks = seq(0, 1, .2)) + 
+  geom_text(aes(label = round(ARI, 2))) + 
+  theme(axis.text.x = element_text(angle = 90)) + 
+  scale_x_discrete(labels = mthnames)
+
+ari_gg
+
+```
+
+
+```{r}
+mths_keep <- c('std','ftalt_p',
+               'varstab','anscombe_std','ft_x_std','deflate',
+               'glmpca')
 
 dat_order <- c('zhengmix4eq','zhengmix4uneq','zhengmix8eq',
                'baron_panc','muraro_panc','lawlor_panc',
@@ -179,6 +187,8 @@ summed_ARI_glmpca_means <- data.frame(ARI = aggregate(summed_ARI_glmpca,
                                       dataset = aggregate(summed_ARI_glmpca, 
                                                           list(dataset = summed_ARI_glmpca$dataset),
                                                           mean)[,1])
+
+summed_ARI_glmpca_means$dataset_name <-  datnames[summed_ARI_glmpca_means$dataset]
 
 summed_ARI_gsumm <- rbind(summed_ARI[-grep('glmpca',summed_ARI$method),],
                           summed_ARI_glmpca_means)
@@ -215,49 +225,17 @@ ari_gg_glmpca
 savegg2pdf(ari_gg_glmpca, 'ARI_heatmap_nngraph_glmpca', wdim = 8, hdim = 3)
 ```
 
-### umap panels
-
-```{r}
-
-plot_dir_umap_subset <- paste0(plot_dir, 'umap_subset/')
-checkdir(plot_dir_umap_subset)
-
-nn <- 'nn50'
-
-umap_lists_sub <- umap_lists$nn10$zhengmix4eq$std
-umap_lists_sub <- lapply(umap_lists[[nn]], FUN = function(x) x[c(mths_keep[-which(mths_keep == 'glmpca')], 'glmpca_seed1234')])
-
-ggs <- umap_plotlist(umap_lists_sub, subtitle_text = nn, ctl = ctlist)
-lapply(names(ggs), FUN = function(gnam) savegg2pdf(ggs[[gnam]], 
-                                                   nam = paste0(gnam,'_',nn),
-                                                   wdim = 12, hdim = 10, 
-                                                   dir = plot_dir_umap_subset))
-
-
-ggs <- umap_plotlist(umap_lists_sub, subtitle_text = nn, ctl = ctlist, ell = TRUE)
-lapply(names(ggs), FUN = function(gnam) savegg2pdf(ggs[[gnam]], 
-                                                   nam = paste0(gnam,'_',nn, 'ellip'),
-                                                   wdim = 12, hdim = 10, 
-                                                   dir = plot_dir_umap_subset))
-```
-
 ### ARI line plots
 
-3 versions: 
-1. all the glmpca lines
-2. glmpca mean at each pc as line 
-
-3. plot glmpca with geompoint and bars
-
 ```{r}
-ari_dir_umap_subset <- paste0(plot_dir, 'ARIxPC_subset/')
-checkdir(ari_dir_umap_subset)
+ari_dir <- paste0(plot_dir, 'ARIxPC_subset/')
+checkdir(ari_dir)
 
 # 1
 
 nnclust_lists_sub1 <- clust_lists$nngraph
 
-for(dat in names(nnclust_lists_sub)){
+for(dat in names(nnclust_lists_sub1)){
   mthvec <- nnclust_lists_sub1[[dat]]$ARI_df$method
   ikeep <- unique(c(which(mthvec %in% mths_keep[-which(mths_keep == 'glmpca')]), 
                     grep('glmpca', mthvec)))
@@ -272,24 +250,8 @@ names(glmpca_colors) <- grep('glmpca',unique(ARIs$zhengmix4eq$method), value = T
 ARIs <- lapply(nnclust_lists_sub1, '[[','ARI_df')
 ggobj <- plot_datfacetARI(Reduce(rbind, ARIs), plot_title = 'nngraph', dat_cols = c(mthcolors, glmpca_colors))
 ggobj
-savegg2pdf(ggobj, paste0('1_', 'nngraph'), dir = ari_dir_umap_subset)
-
-
-# 2
-
-nnclust_lists_sub <- clust_lists$nngraph
-for(dat in names(nnclust_lists_sub)){
-  mthvec <- nnclust_lists_sub[[dat]]$ARI_df$method
-  nnclust_lists_sub[[dat]]$ARI_df <- nnclust_lists_sub[[dat]]$ARI_df[which(mthvec %in% mths_keep[-which(mths_keep == 'glmpca')]),]
-}
-
-
-# 3
-
-ARIs <- lapply(nnclust_lists_sub, '[[','ARI_df')
-ggobj <- plot_datfacetARI(Reduce(rbind, ARIs), plot_title = 'nngraph')
-ggobj + 
-savegg2pdf(ggobj, paste0('3_', 'nngraph'), dir = ari_dir_umap_subset) 
+savegg2pdf(ggobj, paste0('1_', 'nngraph'), dir = ari_dir)
 ```
+
 
 

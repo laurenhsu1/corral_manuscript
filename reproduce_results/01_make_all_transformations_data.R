@@ -5,27 +5,31 @@ source('../R/glmpca_feat_selection.R')
 library(scRNAseq)
 
 mthkeep <- c('std', 'varstab', 'anscombe_std', 'ft_x_std', 'ft_p_std',
-             'ftalt_p', 'adj_pearson', 'deflate', 'deflate_95', 'deflate_98')
+             'ftalt_p', 'adj_pearson', 'deflate', 'deflate_95', 'deflate_98',
+             'sqrt_ftres')
 
-save_dir <- '../data/0_make_all_transformations_data_7.2.21topfeats/'
+checkdir('../data')
+
+save_dir <- '../data/0_make_all_transformations_data_50pcs/'
 
 checkdir(save_dir)
 
-ncomps <- 30
+ncomps <- 50
 
 mcc <- 4
 
 # setting up scelist
 
-try(load('../data/1_scelist_extended.rda')) # code to make this file in reproduce_figs/1_3-figures.Rmd
+tscelist <- list(zhengmix4eq = sce_full_Zhengmix4eq(),
+                 zhengmix4uneq = sce_full_Zhengmix4uneq(),
+                 zhengmix8eq = sce_full_Zhengmix8eq())
 
-tscelist <- scelist_ext[c("zhengmix4eq","zhengmix4uneq", "zhengmix8eq",
-                          'pbmcsca_10x','pbmcsca_dropseq','pbmcsca_indrops')]
+tscelist[['zhengmix8eq']] <- tscelist[['zhengmix8eq']][which(rowSums(counts(tscelist[['zhengmix8eq']])) > 0),]
+tscelist <- lapply(tscelist, logNormCounts)
 
 new_sces_full <- list(baron_panc = BaronPancreasData('human', location = FALSE),
                       lawlor_panc = LawlorPancreasData(),
                       muraro_panc = MuraroPancreasData(ensembl = FALSE, location = FALSE),
-                      campbell_brain = CampbellBrainData(location = FALSE),
                       chen_brain = ChenBrainData(location = FALSE),
                       darmanis_brain = DarmanisBrainData(location = FALSE),
                       xenopus = AztekinTailData()
@@ -47,15 +51,8 @@ saveRDS(scelist, file = paste0(save_dir, 'scelist.rds'))
 all_decomps <- function(sce){
   res <- build_corral_list_only('sce', list('sce' = sce), ncores = 1, npc = ncomps)
   
-  # seeds <- c(1234, 12345, 987,9876,98765, 2020, 2021, 123, 31415)
-  # for(seed in seeds){
-  #   res[[paste0('glmpca_seed',seed)]]<- glmpca_routine(sce, npc = ncomps, seed = seed)
-  #   res[[paste0('glmpca_mem_seed',seed)]]<- glmpca_routine(sce, npc = ncomps, seed = seed, mb = 'memoized')
-  #   res[[paste0('glmpca_stoch_seed',seed)]]<- glmpca_routine(sce, npc = ncomps, seed = seed, mb = 'stochastic')
-  # }
-  
-  # to just run with glmpca once
-  res$glmpca <- glmpca_routine(sce, npc = ncomps, seed = 987)
+  # # to just run with glmpca once
+  # res$glmpca <- glmpca_routine(sce, npc = ncomps, seed = 987)
   
   res$CA <- CA_routine(sce, npc = ncomps)
   
@@ -66,10 +63,27 @@ all_decomps <- function(sce){
   # adding in pca on logcounts
   res$pca <- irlba::prcomp_irlba(x = t(logcounts(sce)), n = ncomps, center = TRUE, scale. = TRUE)
   
+  # adding in sqrt + FT-residuals
+  res$sqrt_ftres <- compsvd_mod(test_corral_preproc(counts(sce), rtype = 'sqrt_ftres'), ncomp = ncomps)
+  
   res
 }
 
-decomp_list <- mclapply(scelist, all_decomps, mc.cores = mcc)
+decomp_list_CA <- mclapply(scelist, all_decomps, mc.cores = mcc)
+saveRDS(decomp_list_CA, file = paste0(save_dir, 'decomp_list_CA.rds'))
+
+# add glmpca
+
+decomp_list <- list()
+
+for(dat in names(scelist)){
+  print(dat)
+  sce <- scelist[[dat]]
+  seeds <- list(1234, 12345, 987,9876,98765, 2020, 2021, 123, 31415, 4321)
+  gorig_res <- mclapply(seeds, FUN = function(s) try(glmpca_routine(sce, npc = ncomps, seed = s)), mc.cores = mcc)
+  names(gorig_res) <- paste0('glmpca_seed',seeds)
+  decomp_list[[dat]] <- append(decomp_list_CA[[dat]], gorig_res)
+}
 
 saveRDS(decomp_list, file = paste0(save_dir, 'decomp_list.rds'))
 
@@ -78,7 +92,7 @@ saveRDS(decomp_list, file = paste0(save_dir, 'decomp_list.rds'))
 decomps2embeds <- function(decomp_list, multi_glmpca = FALSE){
   res <- lapply(decomp_list[mthkeep], FUN = '[[', 'v')
   if(multi_glmpca){
-    for(gnam in grep){
+    for(gnam in grep('glmpca',names(decomp_list), value = TRUE)){
       res[[gnam]] <- decomp_list[[gnam]][['factors']]
     }
   }
@@ -89,7 +103,6 @@ decomps2embeds <- function(decomp_list, multi_glmpca = FALSE){
   res
 }
 
-emb_list <- mclapply(decomp_list, decomps2embeds, mc.cores = mcc)
+emb_list <- mclapply(decomp_list, decomps2embeds, multi_glmpca = TRUE, mc.cores = mcc)
 
 saveRDS(emb_list, file = paste0(save_dir, 'emb_list.rds'))
-

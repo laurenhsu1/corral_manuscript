@@ -246,7 +246,7 @@ ridge_plot <- function(mat, gene, color_vec, legend = TRUE, plot_title = gene){
   ridge_df <- data.frame(ct = color_vec,
                          log10_exp = log10(1 + mat[gene,]))
   ggobj <- ggplot(ridge_df, aes(x = log10_exp, y = ct, fill = ct)) +
-    geom_density_ridges() +
+    ggridges::geom_density_ridges() +
     theme_ridges() + ggtitle(plot_title)
   
   if(!legend){
@@ -269,8 +269,8 @@ add_HVGsub <- function(scelist, modelfunction = modelGeneVar, fdr.thresh = .05){
   return(scelist)
 }
 
-test_corral_preproc <- function(inp, rtype = c('ft_p','ft_x','varstab','ftalt_p','neyman','kullback','deflate','anscombe', 'std', 'anscombe_scale','ft_p_scale','ft_x_scale','anscombe_std', 'ft_x_std', 'adj_pearson','ft_p_std','varstab_noCA','varstab_scale'), deflate_alpha = .9){
-  rtype <- match.arg(rtype, c('ft_p','ft_x','varstab','ftalt_p','neyman','kullback','deflate','anscombe', 'std', 'anscombe_scale','ft_p_scale','ft_x_scale','anscombe_std', 'ft_x_std', 'adj_pearson','ft_p_std','varstab_noCA','varstab_scale'))
+test_corral_preproc <- function(inp, rtype = c('ft_p','ft_x','varstab','ftalt_p','neyman','kullback','deflate','anscombe', 'std', 'anscombe_scale','ft_p_scale','ft_x_scale','anscombe_std', 'ft_x_std', 'adj_pearson','ft_p_std','varstab_noCA','varstab_scale','sqrt_ftres'), deflate_alpha = .9){
+  rtype <- match.arg(rtype, c('ft_p','ft_x','varstab','ftalt_p','neyman','kullback','deflate','anscombe', 'std', 'anscombe_scale','ft_p_scale','ft_x_scale','anscombe_std', 'ft_x_std', 'adj_pearson','ft_p_std','varstab_noCA','varstab_scale','sqrt_ftres'))
   if(!is(inp, "dgCMatrix")){
     sp_mat <- Matrix::Matrix(inp, sparse = TRUE)
   } else {sp_mat <- inp}
@@ -343,6 +343,20 @@ test_corral_preproc <- function(inp, rtype = c('ft_p','ft_x','varstab','ftalt_p'
     ppmat <- ppmat * sqrt(1 - row.w)
     ppmat <- sweep(ppmat, 2, sqrt(1 - col.w), "*")
     return(ppmat)
+  }
+  if(rtype == 'sqrt_ftres'){
+    sq_mat <- xmat ^ .5
+    sq_N <- sum(sq_mat)
+    sq_pmat <- sq_mat / sq_N
+    
+    sq_ws <- get_weights(sq_mat)
+    sq_row.w <- sq_ws$row.w
+    sq_col.w <- sq_ws$col.w
+    
+    expectedp <- sq_row.w %*% t(sq_col.w)
+    
+    sq_expectedp <- sq_row.w %*% t(sq_col.w)
+    return(sq_pmat^.5 + (sq_pmat + 1/sq_N)^.5 - (4*sq_expectedp + 1/sq_N)^.5)
   }
 }
 
@@ -483,6 +497,69 @@ scran_feat_selection <- function(sce, fdr_thresh = .1, nfeat = 3000, mth = 'fdr'
   }
   
   sce[hvg_inds,]
+}
+
+scal_var_mat <- function(inp, batchvec = NULL){
+  if('corralm' %in% class(inp)){
+    splitvec <- rep(rownames(inp$batch_sizes),inp$batch_sizes[,2])
+    emb <- inp$v
+  }
+  else if(!is.null(batchvec)){
+    if(length(batchvec) != nrow(inp)){
+      stop('batchvec must be same length as number of rows in inp')
+    }
+    emb <- inp
+    splitvec <- batchvec
+  }
+  else{
+    stop('Please provide a valid input: either corralm object or embedding with batchvec arg')
+  }
+  sepemb <- apply(emb, MARGIN = 2, FUN = split, f = splitvec)
+  sep_var <- lapply(sepemb, FUN = function(x) rbind(unlist(lapply(x, var))))
+  sv_mat <- Reduce(cbind,lapply(sep_var, t))
+  sv_mat[,1]
+  
+  overall_var <- apply(emb, MARGIN = 2, FUN = var)
+  
+  sv_mat <- sweep(sv_mat, MARGIN = 2, STATS = overall_var, FUN = '/')
+  sv_mat
+}
+
+scal_var <- function(inp, batchvec = NULL, pcs = seq(3), returngg = FALSE, showplot = TRUE, plot_subtitle = NULL, max_y = NA){
+  svmat <- scal_var_mat(inp, batchvec)
+  svmelt <- reshape2::melt(svmat[,pcs])
+  colnames(svmelt) <- c('Batch','PC','sv')
+  svmelt$Batch <- as.factor(svmelt$Batch)
+  
+  svmelt$PC_ind <- svmelt$PC + seq(length(svmelt$PC))
+  
+  pc_seplines <- seq(2,max(svmelt$PC_ind))[-which(seq(2,max(svmelt$PC_ind)) %in% svmelt$PC_ind)]
+  pc_seplines <- c(pc_seplines, max(svmelt$PC_ind)+1)
+  pc_lablocs <- pc_seplines - nrow(svmat)/2
+  
+  ggobj <- ggplot(svmelt, aes(x = PC_ind, y = sv, colour = Batch, group = Batch)) + 
+    geom_hline(yintercept=1, color = 'gray') + 
+    geom_segment(aes(x=PC_ind, xend=PC_ind, y=1, yend=sv), color="gray") +
+    geom_point(size = 2) + ggthemes::scale_color_few() + # other color option - scale_color_few()
+    theme_classic() + 
+    #geom_vline(xintercept = pc_seplines, color = '#555555') +
+    geom_vline(xintercept = pc_seplines, color = 'gray') +
+    labs(x = 'Component',
+         y = 'Scaled variance by group for top PCs',
+         title = 'Scaled variance by batch',
+         subtitle = plot_subtitle,
+         colour = 'Batch') + 
+    scale_x_continuous(breaks = pc_lablocs, 
+                       labels = paste0('PC',pcs)) +
+    theme(axis.ticks.x = element_blank(), axis.title.x = element_text(size = rel(1.2))) +
+    ylim(0,max_y)
+  
+  if(showplot){
+    show(ggobj)
+  }
+  if(returngg){
+    return(ggobj)
+  }
 }
 
 

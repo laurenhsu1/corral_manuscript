@@ -1,4 +1,4 @@
-save_dir <- '../data/0_make_all_transformations_data_7.4.21topfeats/'
+save_dir <- '../data/0_make_all_transformations_data_50pcs/'
 source('../R/load_pkgs.R')
 source('../R/utils.R')
 source('../R/glmpca_feat_selection.R')
@@ -28,7 +28,6 @@ xeno.sce$ct[grep('Myeloid', xeno.sce$ct)] <- 'Myeloid'
 new_ctlist <- list(baron_panc = scelist$baron_panc$label,
                    lawlor_panc = scelist$lawlor_panc$`cell type`,
                    muraro_panc = scelist$muraro_panc$label,
-                   campbell_brain = scelist$campbell_brain$clust_all,
                    chen_brain = scelist$chen_brain$SVM_clusterID,
                    darmanis_brain = scelist$darmanis_brain$cell.type,
                    xenopus = xeno.sce$ct)
@@ -57,8 +56,8 @@ clust_list <- mclapply(as.list(dat_names),
 
 saveRDS(clust_list, file = paste0(save_dir, 'nngraph_clust.rds'))
 
-louvclust_list <- mclapply(as.list(dat_names),
-                       FUN = function(nam) try(clusters_acrossPCs(emb_list[[nam]], ctlist[[nam]], dataset_name = nam, blusparam = NNGraphParam(cluster.fun="louvain"))),
-                       mc.cores = mcc)
-
-saveRDS(louvclust_list, file = paste0(save_dir, 'louvain_clust.rds'))
+# louvclust_list <- mclapply(as.list(dat_names),
+#                        FUN = function(nam) try(clusters_acrossPCs(emb_list[[nam]], ctlist[[nam]], dataset_name = nam, blusparam = NNGraphParam(cluster.fun="louvain"))),
+#                        mc.cores = mcc)
+# 
+# saveRDS(louvclust_list, file = paste0(save_dir, 'louvain_clust.rds'))

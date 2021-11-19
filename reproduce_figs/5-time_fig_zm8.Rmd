@@ -10,9 +10,10 @@ knitr::opts_chunk$set(echo = TRUE)
 
 library(SingleCellExperiment)
 library(corral)
-source('figures/load_pkgs.R')
-source('figures/utils.R')
-source('figures/plotting_utils.R')
+
+try(source('../R/load_pkgs.R'))
+try(source('../R/utils.R'))
+try(source('../R/plotting_utils.R'))
 ```
 
 
@@ -21,7 +22,7 @@ Setting the directory for where plots will be saved
 # plot_dir is the directory where all the plots are saved
 # save_dir is where to read the data from
 
-plot_dir <- 'figures/7_time_fig_zm8/'
+plot_dir <- '../figs/5_timecomps'
 
 checkdir(plot_dir)
 ```
@@ -55,8 +56,6 @@ for(i in 1:length(nfeats)){
     res[[f_ind]][[mth]] <- cur_res
   }
 }
-
-saveRDS(res, file = '7_time_fig_zm8.rds')
 
 time_df <- data.frame()
 for(iname in names(res)){
@@ -112,8 +111,6 @@ for(i in 1:length(nfeats)){
   }
 }
 
-saveRDS(res, file = '7_time_fig_xeno.rds')
-
 time_df <- data.frame()
 for(iname in names(res)){
   time_df <- rbind(time_df, 
@@ -133,7 +130,7 @@ time_gg <- ggplot(time_df, aes(x = num_feats, y = runtime_min, color = mth)) +
 
 time_gg
 
-savegg2pdf(time_gg, 'time_comp_xeno', wdim = 7, hdim = 5)
+savegg2pdf(time_gg,'time_comp_xeno', wdim = 7, hdim = 5)
 ```
 
 

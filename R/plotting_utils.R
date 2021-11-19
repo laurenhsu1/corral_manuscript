@@ -12,7 +12,8 @@ mthnames <- list('std' = 'CA (standard)',
                  'glmpca' = 'glmpca',
                  'pca' = 'PCA on logcounts',
                  'deflate_95' = 'Power deflation (a=.95)',
-                 'deflate_98' = 'Power deflation (a=.98)')
+                 'deflate_98' = 'Power deflation (a=.98)',
+                 'sqrt_ftres' = 'CA with FT residuals on sqrt counts')
 
 seeds <- list(1234, 12345, 987,9876,98765, 2020, 2021, 123, 31415)
 glmpca_nameslist <- as.list(paste0('glmpca.',seeds))
@@ -32,7 +33,8 @@ mthcolors <- c('std' = '#DEA0FD',
                'pca' = 'gray', #000000
                'deflate_95' = '#7ED7D1',
                'deflate_98' = '#BEEBE7',
-               'CA' = '#DEA0FD')
+               'CA' = '#DEA0FD',
+               'sqrt_ftres' = '#5D3FD3')
 
 namedmthcolors <- mthcolors
 names(namedmthcolors) <- mthnames[names(mthcolors)]
