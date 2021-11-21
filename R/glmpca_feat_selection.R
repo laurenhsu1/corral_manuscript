@@ -1,3 +1,9 @@
+## Functions from repo for the glmpca paper 
+## https://github.com/willtownes/scrna2019
+
+## Used to replicate approaches used in the Townes et al. 2019 Genome Biology
+## paper on glmpca for benchmarking comparison
+
 poisson_deviance<-function(x,lambda,sz){
   #assumes log link and size factor sz on the same scale as x (not logged)
   #stopifnot(all(x>=0 & sz>0))

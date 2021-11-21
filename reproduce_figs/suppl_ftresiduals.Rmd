@@ -1,0 +1,193 @@
+---
+title: 'Supplement: Freeman-Tukey residuals'
+author: "Lauren Hsu"
+date: "11/19/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Loading data + set-up
+
+**01 and 02 in `reproduce_results` must be run in advance**
+
+```{r}
+source('../R/load_pkgs.R')
+source('../R/utils.R')
+source('../R/glmpca_feat_selection.R')
+
+mthkeep <- c('std', 'varstab', 'anscombe_std', 'ft_x_std', 'ft_p_std',
+             'ftalt_p', 'adj_pearson', 'deflate', 'deflate_95', 'deflate_98',
+             'sqrt_ftres')
+
+checkdir('../data')
+
+save_dir <- '../data/0_make_all_transformations_data_50pcs/'
+plot_dir <- '../figs_50pcs/'
+
+checkdir(save_dir)
+checkdir(plot_dir)
+
+ncomps <- 50
+
+mcc <- 4
+```
+
+```{r}
+scelist <- readRDS(paste0(save_dir, 'scelist.rds'))
+ctlist <- readRDS(file = paste0(save_dir, 'ctlist.rds'))
+```
+
+## 01 decomps to get embeddings
+
+```{r}
+
+all_decomps <- function(sce){
+  res <- list()
+  
+  # adding in sqrt + FT-residuals
+  res$sqrt_ftres <- compsvd_mod(ftres(var_stabilize(counts(sce), transform = 'sqrt')), ncomp = ncomps)
+  
+  res$ans_ftres <- compsvd_mod(ftres(var_stabilize(counts(sce), transform = 'anscombe')), ncomp = ncomps)
+  
+  res$ft_ftres <- compsvd_mod(ftres(var_stabilize(counts(sce), transform = 'freemantukey')), ncomp = ncomps)
+  
+  ftresmat <- ftres(counts(sce))
+  res$ftres_powdef <- compsvd_mod(sign(ftresmat) * (abs(ftresmat)^.9), ncomp = ncomps)
+  
+  res
+}
+
+decomp_list_CA <- mclapply(scelist, all_decomps, mc.cores = mcc)
+saveRDS(decomp_list_CA, file = paste0(save_dir, 'decomp_list_CAsuppl.rds'))
+
+# embedding list
+
+decomps2embeds <- function(decomp_list, multi_glmpca = FALSE){
+  res <- lapply(decomp_list, FUN = '[[', 'v')
+  res
+}
+
+emb_list_CA <- mclapply(decomp_list_CA, decomps2embeds, multi_glmpca = TRUE, mc.cores = mcc)
+
+saveRDS(emb_list_CA, file = paste0(save_dir, 'emb_list_CAsuppl.rds'))
+
+```
+
+
+## 02 clustering
+
+```{r}
+clust_list <- mclapply(as.list(dat_names),
+                       FUN = function(nam) try(clusters_acrossPCs(emb_list_CA[[nam]], ctlist[[nam]], dataset_name = nam)),
+                       mc.cores = mcc)
+
+saveRDS(clust_list, file = paste0(save_dir, 'nngraph_clust_CAsuppl.rds'))
+```
+
+Adding back the Standard CA and only FTresidual results
+
+```{r}
+full_clust_list <- readRDS(clust_list, file = paste0(save_dir, 'nngraph_clust.rds'))
+full_mth_keep <- c('std','ftalt_p')
+for(dat in names(clust_list)){
+  clust_list[[dat]]$ARI_df <- rbind(clust_list[[dat]]$ARI_df, full_clust_list[[dat]]$ARI_df[which(full_clust_list[[dat]]$ARI_df$method %in% full_mth_keep),])
+}
+```
+
+## Plotting
+
+```{r}
+ARIs <- lapply(clust_list, '[[','ARI_df')
+ARI_df <- Reduce(rbind, ARIs)
+
+# ARI_df_gsumm <- rbind(ARI_df_allclusts,  cres[,1:5])
+```
+
+### ARI heatmap
+
+```{r}
+best_per_mth <- function(df){
+  mths <- as.list(unique(df$method))
+  bymth <- lapply(mths, function(x) df[which(df$method == x),])
+  ARIs <- lapply(bymth, function(x) x[which(x$ARI == max(x$ARI))[1],])
+  Reduce(rbind, ARIs)
+}
+
+
+summed_ARI <- Reduce(rbind, lapply(as.list(unique(ARI_df$dataset)), FUN = function(datname) best_per_mth(ARI_df[which(ARI_df$dataset == datname),])))
+
+datnames <- c("zhengmix4eq" = 'Zhengmix4eq',
+              "zhengmix4uneq" = 'Zhengmix4uneq', 
+              "zhengmix8eq" = 'Zhengmix8eq',
+              'baron_panc' = 'Pancreas: Baron',
+              'lawlor_panc' = 'Pancreas: Lawlor',
+              'muraro_panc' = 'Pancreas: Muraro',
+              'chen_brain' = 'Brain: Chen',
+              'darmanis_brain' = 'Brain: Darmanis',
+              'xenopus' = 'Aztekin xenopus tail')
+
+# remapping the dataset name column
+summed_ARI$dataset_name <- datnames[summed_ARI$dataset]
+
+ari_gg <- ggplot(data = summed_ARI, aes(x = method, y = dataset_name, fill = ARI)) + 
+  geom_tile() + 
+  scale_fill_viridis_b(breaks = seq(0, 1, .15)) + 
+  # alt: scale_fill_viridis_b(breaks = seq(0, 1, .2)) + 
+  geom_text(aes(label = round(ARI, 2))) + 
+  theme(axis.text.x = element_text(angle = 90)) + 
+  scale_x_discrete(labels = mthnames)
+
+ari_gg
+
+```
+
+
+```{r}
+mths_keep <- c('std','ftalt_p','sqrt_ftres','ans_ftres',
+               'ft_ftres','ftres_powdef')
+
+dat_order <- c('zhengmix4eq','zhengmix4uneq','zhengmix8eq',
+               'baron_panc','muraro_panc','lawlor_panc',
+               'chen_brain', 'darmanis_brain', 'xenopus')
+
+summed_ARI$ARI <- round(summed_ARI$ARI, digits = 2)
+
+ari_gg <- ggplot(data = summed_ARI,
+                 aes(y = method, x = dataset, fill = ARI)) + 
+  geom_tile() + 
+  scale_fill_viridis_b(breaks = seq(0, 1, .1)) + 
+  # alt: scale_fill_viridis_b(breaks = seq(0, 1, .2)) + 
+  geom_text(aes(label = round(ARI, 2))) + 
+  theme(axis.text.x = element_text(angle = 90)) + 
+  scale_y_discrete(labels = mthnames, limits = rev(mths_keep)) +
+  scale_x_discrete(labels = datnames, position = 'top',guide = guide_axis(angle = 60),
+                   limits = dat_order)
+
+ari_gg
+
+savegg2pdf(ari_gg, 'ARI_heatmap_nngraph_CAsuppl', wdim = 8, hdim = 5)
+```
+
+### ARI line plots
+
+```{r}
+ari_dir <- paste0(plot_dir, 'ARIxPC_subset/')
+checkdir(ari_dir)
+
+# 1
+
+for(dat in names(nnclust_lists_sub1)){
+  mthvec <- nnclust_lists_sub1[[dat]]$ARI_df$method
+  ikeep <- unique(c(which(mthvec %in% mths_keep[-which(mths_keep == 'glmpca')]), 
+                    grep('glmpca', mthvec)))
+  nnclust_lists_sub1[[dat]]$ARI_df <- nnclust_lists_sub1[[dat]]$ARI_df[ikeep,]
+}
+
+ggobj <- plot_datfacetARI(Reduce(rbind, ARIs), plot_title = 'nngraph', dat_cols = mthcolors)
+ggobj
+savegg2pdf(ggobj, paste0('1_', 'nngraph_CAsuppl'), dir = ari_dir)
+```
+

@@ -269,6 +269,33 @@ add_HVGsub <- function(scelist, modelfunction = modelGeneVar, fdr.thresh = .05){
   return(scelist)
 }
 
+ftres <- function(xmat){
+  N <- sum(xmat)
+  xmat <- xmat
+  pmat <- xmat / N
+  ws <- get_weights(xmat)
+  row.w <- ws$row.w
+  col.w <- ws$col.w
+  row.sum <- rowSums(xmat)
+  col.sum <- colSums(xmat)
+  expectedp <- row.w %*% t(col.w)
+  expectedx <- row.sum %*% t(col.sum)
+  return(pmat^.5 + (pmat + 1/N)^.5 - (4*expectedp + 1/N)^.5)
+}
+
+var_stabilize <- function(inp, transform = c('sqrt','freemantukey','anscombe')){
+  transform <- match.arg(transform, c('sqrt','freemantukey','anscombe'))
+  if(transform == 'sqrt'){
+    return(inp^.5)
+  }
+  else if(transform == 'freemantukey'){
+    return(inp^.5 + (inp + 1)^.5)
+  }
+  else if(transform == 'anscombe'){
+    return(2 * (inp + 3/8)^.5)
+  }
+}
+
 test_corral_preproc <- function(inp, rtype = c('ft_p','ft_x','varstab','ftalt_p','neyman','kullback','deflate','anscombe', 'std', 'anscombe_scale','ft_p_scale','ft_x_scale','anscombe_std', 'ft_x_std', 'adj_pearson','ft_p_std','varstab_noCA','varstab_scale','sqrt_ftres'), deflate_alpha = .9){
   rtype <- match.arg(rtype, c('ft_p','ft_x','varstab','ftalt_p','neyman','kullback','deflate','anscombe', 'std', 'anscombe_scale','ft_p_scale','ft_x_scale','anscombe_std', 'ft_x_std', 'adj_pearson','ft_p_std','varstab_noCA','varstab_scale','sqrt_ftres'))
   if(!is(inp, "dgCMatrix")){
@@ -345,18 +372,7 @@ test_corral_preproc <- function(inp, rtype = c('ft_p','ft_x','varstab','ftalt_p'
     return(ppmat)
   }
   if(rtype == 'sqrt_ftres'){
-    sq_mat <- xmat ^ .5
-    sq_N <- sum(sq_mat)
-    sq_pmat <- sq_mat / sq_N
-    
-    sq_ws <- get_weights(sq_mat)
-    sq_row.w <- sq_ws$row.w
-    sq_col.w <- sq_ws$col.w
-    
-    expectedp <- sq_row.w %*% t(sq_col.w)
-    
-    sq_expectedp <- sq_row.w %*% t(sq_col.w)
-    return(sq_pmat^.5 + (sq_pmat + 1/sq_N)^.5 - (4*sq_expectedp + 1/sq_N)^.5)
+    return(ftres(sp_mat^.5))
   }
 }
 

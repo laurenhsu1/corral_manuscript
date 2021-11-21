@@ -33,7 +33,7 @@ Setting the directory for where plots will be saved
 
 
 
-plot_dir <- '../figs_50pcss/'
+plot_dir <- '../figs_50pcs/'
 save_dir <- '../data/0_make_all_transformations_data_50pcs/'
 
 checkdir(plot_dir)
@@ -207,7 +207,11 @@ ari_gg <- ggplot(data = summed_ARI_gsumm,
 ari_gg
 
 savegg2pdf(ari_gg, 'ARI_heatmap_nngraph_vF', wdim = 8, hdim = 5)
+```
 
+Supplementary Figure S1
+
+```{r}
 ## plot to show glmpca variation by seed
 
 ari_gg_glmpca <- ggplot(data = summed_ARI_glmpca,
@@ -224,6 +228,7 @@ ari_gg_glmpca
 
 savegg2pdf(ari_gg_glmpca, 'ARI_heatmap_nngraph_glmpca', wdim = 8, hdim = 3)
 ```
+
 
 ### ARI line plots
 
